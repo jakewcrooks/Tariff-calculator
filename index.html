@@ -36,13 +36,13 @@
     @media(max-width:420px){.row{flex-direction:column;gap:.2rem}}
 
     /* ── Journey estimates ── */
-    .examples{margin-top:.4rem;overflow-x:auto}      /* horizontal scroll on small screens */
+    .examples{margin-top:.4rem;overflow-x:auto}
     .examples h3{margin:.1rem 0 .5rem 0;font-size:1.1rem;color:#555}
 
-    .journey-table{min-width:420px;display:block}    /* force a minimum width so all 4 columns fit */
+    .journey-table{min-width:720px;display:block}
     .table-row{
         display:grid;
-        grid-template-columns:repeat(4,1fr);
+        grid-template-columns:repeat(6,1fr);
         gap:.5rem;
         font-size:.95rem;
         align-items:center;
@@ -81,86 +81,92 @@
 (() => {
     /* currency formatter */
     const toGBP = v => new Intl.NumberFormat('en-GB',
-                     {style:'currency',currency:'GBP'})
-                     .format(+v || 0);
+                     {style:'currency',currency:'GBP'}).format(+v || 0);
 
     /* constants */
     const MILE = 1760;
-    const DEFAULTS = {
-        flagPrice: 5.40,
-        pricePerBlk: 0.20,
-        yardBlock: 160
-    };
+    const DEFAULTS = { flagPrice:5.40, pricePerBlk:0.20, yardBlock:160 };
 
-    /* element refs */
-    const ids = ['flagYardage','flagPrice','pricePerYards','yardBlock'];
-    const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
-    const results = document.getElementById('results');
+    /* DOM refs */
+    const ids = ['flagPrice','pricePerYards','yardBlock'];
+    const el = id => document.getElementById(id);
+    const results = el('results');
 
-    ids.forEach(id => els[id].addEventListener('input', update));
-    update();   // initial render
+    ids.forEach(id => el(id).addEventListener('input', update));
+    update();           // first run
 
     function update(){
-        /* proposed (user-entered) values */
-        const flagPrice   = +els.flagPrice.value   || 0;
-        const pricePerBlk = +els.pricePerYards.value || 0;
-        const yardBlock   = +els.yardBlock.value   || 1;
+        /* user-entered props */
+        const flagPrice   = +el('flagPrice').value   || 0;
+        const pricePerBlk = +el('pricePerYards').value || 0;
+        const yardBlock   = +el('yardBlock').value   || 1;
 
-        /* per-mile prices – proposed */
-        const fullTicks  = Math.floor(MILE / yardBlock);
-        const mileFull   = fullTicks * pricePerBlk;
+        /* per-mile rates */
+        const fullTicks   = Math.floor(MILE/yardBlock);
+        const mileFull    = fullTicks * pricePerBlk;
+        const mileExact   = (MILE/yardBlock) * pricePerBlk;
 
-        /* per-mile prices – default/current */
-        const defaultFullTicks = Math.floor(MILE / DEFAULTS.yardBlock);
-        const defaultMileFull  = defaultFullTicks * DEFAULTS.pricePerBlk;
+        const defFullTicks = Math.floor(MILE/DEFAULTS.yardBlock);
+        const defMileFull  = defFullTicks * DEFAULTS.pricePerBlk;
+        const defMileExact = (MILE/DEFAULTS.yardBlock) * DEFAULTS.pricePerBlk;
 
-        const extras = [0,1,2,3,4,9];  // extra miles beyond flag
+        const extras = [0,1,2,3,4,9];   // extra miles beyond flag
 
         const tariffs = [
             {title:'Tariff 1', mul:1},
             {title:'Tariff 2', mul:1.5},
             {title:'Tariff 3', mul:2}
-        ].map(({title,mul}) => {
-            /* proposed figures */
-            const flagProp     = flagPrice * mul;
-            const milePropFull = mileFull  * mul;
+        ].map(({title,mul})=>{
+            /* proposed + current basics */
+            const flagProp = flagPrice * mul;
+            const flagCurr = DEFAULTS.flagPrice * mul;
 
-            /* current figures */
-            const flagCurr     = DEFAULTS.flagPrice   * mul;
-            const mileCurrFull = defaultMileFull      * mul;
+            const milePropFull  = mileFull  * mul;
+            const mileCurrFull  = defMileFull  * mul;
+            const milePropExact = mileExact * mul;
+            const mileCurrExact = defMileExact * mul;
 
-            const journeys = extras.map(extra => {
-                const milesTotal = extra + 1;                           // total miles incl. flag
-                const costCurr   = flagCurr + extra * mileCurrFull;
-                const costProp   = flagProp + extra * milePropFull;
-                const pctInc     = costCurr === 0 ? '—'
-                                   : (((costProp - costCurr) / costCurr) * 100)
-                                     .toFixed(2) + '%';
-                return { miles:milesTotal, current:toGBP(costCurr),
-                         proposed:toGBP(costProp), pct:pctInc };
+            const journeys = extras.map(extra=>{
+                const miles = extra + 1;
+                const costCurr      = flagCurr + extra * mileCurrFull;
+                const costProp      = flagProp + extra * milePropFull;
+                const costCurrExact = flagCurr + extra * mileCurrExact;
+                const costPropExact = flagProp + extra * milePropExact;
+
+                const pctInc      = costCurr ? (((costProp-costCurr)/costCurr)*100).toFixed(2)+'%' : '—';
+                const pctIncExact = costCurrExact ? (((costPropExact-costCurrExact)/costCurrExact)*100).toFixed(2)+'%' : '—';
+
+                return {
+                    miles,
+                    current:toGBP(costCurr),
+                    proposed:toGBP(costProp),
+                    pct:pctInc,
+                    proposedExact:toGBP(costPropExact),
+                    pctExact:pctIncExact
+                };
             });
 
             return {
                 title,
-                Flag:                         toGBP(flagProp),
-                'Each mile, full ticks only': toGBP(milePropFull),
-                'Each mile, exact':           toGBP((MILE/yardBlock)*pricePerBlk*mul),
+                Flag:toGBP(flagProp),
+                'Each mile, full ticks only':toGBP(milePropFull),
+                'Each mile, exact':toGBP(milePropExact),
                 journeys
             };
         });
 
         /* render */
-        results.innerHTML = tariffs.map(t => `
+        results.innerHTML = tariffs.map(t=>`
             <div class="card">
                 <h2>${t.title}</h2>
                 ${Object.entries(t).filter(([k])=>k!=='title'&&k!=='journeys')
-                     .map(([k,v])=>`<div class="row"><span>${k}:</span><span>${v}</span></div>`).join('')}
+                   .map(([k,v])=>`<div class="row"><span>${k}:</span><span>${v}</span></div>`).join('')}
 
                 <div class="examples">
                     <h3>Journey estimates</h3>
                     <div class="journey-table">
                         <div class="table-row header">
-                            <span>Miles</span><span>Current</span><span>Proposed</span><span>% Increase</span>
+                            <span>Miles</span><span>Current</span><span>Proposed</span><span>% Increase</span><span>Proposed&nbsp;Exact</span><span>% Increase&nbsp;Exact</span>
                         </div>
                         ${t.journeys.map(j=>`
                             <div class="table-row">
@@ -168,6 +174,8 @@
                                 <span>${j.current}</span>
                                 <span>${j.proposed}</span>
                                 <span>${j.pct}</span>
+                                <span>${j.proposedExact}</span>
+                                <span>${j.pctExact}</span>
                             </div>
                         `).join('')}
                     </div>
